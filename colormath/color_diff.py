@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 The functions in this module are used for comparing two LabColor objects
 using various Delta E formulas.

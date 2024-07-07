@@ -1,9 +1,16 @@
-# -*- coding: utf-8 -*-
 """
 Contains lookup tables, constants, and things that are generally static
 and useful throughout the library.
 """
+from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import Any
+
 import numpy
+import numpy.typing
+
+__all__ = ["REF_ILLUM_TABLE"]
 
 STDOBSERV_X2 = numpy.array(
     (
@@ -887,7 +894,7 @@ REFERENCE_ILLUM_BLACKBODY = numpy.array(
 
 # This table is used to match up illuminants to spectral distributions above.
 # It should correspond to a ColorObject.illuminant attribute.
-REF_ILLUM_TABLE = {
+REF_ILLUM_TABLE: Mapping[str, numpy.typing.NDArray[Any]] = {
     "a": REFERENCE_ILLUM_A,
     "b": REFERENCE_ILLUM_B,
     "c": REFERENCE_ILLUM_C,

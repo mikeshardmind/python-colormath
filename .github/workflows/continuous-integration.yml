@@ -8,7 +8,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-18.04, macOS-latest]
-        python-version: [2.7, 3.5, 3.6, 3.7]
+        python-version: [3.8, 3.9, 3.10, 3.11, 3.12]
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v1
@@ -18,7 +18,7 @@ jobs:
         python-version: ${{ matrix.python-version }}
     - name: Install Package Dependencies
       run: |
-        pip install -r requirements.txt
+        pip install -r test_requirements.txt
     - name: Test with nosetests
       run: |
         nosetests
@@ -27,7 +27,7 @@ jobs:
     strategy:
       matrix:
         os: [windows-2019]
-        python-version: [2.7, 3.5, 3.6, 3.7]
+        python-version: [3.8, 3.9, 3.10, 3.11, 3.12]
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v1
@@ -37,7 +37,7 @@ jobs:
         python-version: ${{ matrix.python-version }}
     - name: Install Package Dependencies
       run: |
-        pip install -r requirements.txt
+        pip install -r test_requirements.txt
       shell: cmd
     - name: Test with nosetests
       run: |

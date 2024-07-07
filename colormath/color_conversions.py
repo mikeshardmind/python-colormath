@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 Conversion between color spaces.
 
@@ -69,7 +68,7 @@ def apply_RGB_matrix(var1, var2, var3, rgb_type, convtype="xyz_to_rgb"):
     return rgb_r, rgb_g, rgb_b
 
 
-class ConversionManager(object):
+class ConversionManager:
     __metaclass__ = ABCMeta
 
     def __init__(self):
@@ -116,7 +115,7 @@ class ConversionManager(object):
 
 class GraphConversionManager(ConversionManager):
     def __init__(self):
-        super(GraphConversionManager, self).__init__()
+        super().__init__()
         self.conversion_graph = networkx.DiGraph()
 
     def get_conversion_path(self, start_type, target_type):
@@ -140,7 +139,7 @@ class GraphConversionManager(ConversionManager):
         ]
 
     def add_type_conversion(self, start_type, target_type, conversion_function):
-        super(GraphConversionManager, self).add_type_conversion(
+        super().add_type_conversion(
             start_type, target_type, conversion_function
         )
         self.conversion_graph.add_edge(

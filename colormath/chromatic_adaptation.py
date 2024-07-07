@@ -1,7 +1,10 @@
-# -*- coding: utf-8 -*-
+from __future__ import annotations
+
 import logging
+from collections.abc import Sequence
 
 import numpy
+import numpy.typing
 from numpy.linalg import pinv
 
 from colormath import color_constants
@@ -9,8 +12,12 @@ from colormath import color_constants
 logger = logging.getLogger(__name__)
 
 
-# noinspection PyPep8Naming
-def _get_adaptation_matrix(wp_src, wp_dst, observer, adaptation):
+def _get_adaptation_matrix(
+    wp_src: str | Sequence[float],
+    wp_dst: str | Sequence[float],
+    observer: color_constants.OBSERVERS_TYPE,
+    adaptation: color_constants.CHROMATIC_ADAPTIONS,
+):
     """
     Calculate the correct transformation matrix based on origin and target
     illuminants. The observer angle must be the same between illuminants.
@@ -29,14 +36,11 @@ def _get_adaptation_matrix(wp_src, wp_dst, observer, adaptation):
     if isinstance(wp_src, str):
         orig_illum = wp_src.lower()
         wp_src = color_constants.ILLUMINANTS[observer][orig_illum]
-    elif hasattr(wp_src, "__iter__"):
-        wp_src = wp_src
+
 
     if isinstance(wp_dst, str):
         targ_illum = wp_dst.lower()
         wp_dst = color_constants.ILLUMINANTS[observer][targ_illum]
-    elif hasattr(wp_dst, "__iter__"):
-        wp_dst = wp_dst
 
     # Sharpened cone responses ~ rho gamma beta ~ sharpened r g b
     rgb_src = numpy.dot(m_sharp, wp_src)
@@ -46,15 +50,19 @@ def _get_adaptation_matrix(wp_src, wp_dst, observer, adaptation):
     m_rat = numpy.diag(rgb_dst / rgb_src)
 
     # Final transformation matrix
-    m_xfm = numpy.dot(numpy.dot(pinv(m_sharp), m_rat), m_sharp)
-
-    return m_xfm
+    return numpy.dot(numpy.dot(pinv(m_sharp), m_rat), m_sharp)
 
 
 # noinspection PyPep8Naming
 def apply_chromatic_adaptation(
-    val_x, val_y, val_z, orig_illum, targ_illum, observer="2", adaptation="bradford"
-):
+    val_x: float,
+    val_y: float,
+    val_z: float,
+    orig_illum: str | Sequence[float],
+    targ_illum: str | Sequence[float],
+    observer: color_constants.OBSERVERS_TYPE="2",
+    adaptation: color_constants.CHROMATIC_ADAPTIONS="bradford"
+) -> tuple[float, float, float]:
     """
     Applies a chromatic adaptation matrix to convert XYZ values between
     illuminants. It is important to recognize that color transformation results
@@ -67,22 +75,13 @@ def apply_chromatic_adaptation(
 
     http://brucelindbloom.com/ChromAdaptEval.html
     """
-    # It's silly to have to do this, but some people may want to call this
-    # function directly, so we'll protect them from messing up upper/lower case.
-    adaptation = adaptation.lower()
+    wp_src: Sequence[float] = (
+        color_constants.ILLUMINANTS[observer][orig_illum] if isinstance(orig_illum, str) else orig_illum
+    )
+    wp_dst: Sequence[float] = (
+        color_constants.ILLUMINANTS[observer][targ_illum] if isinstance(targ_illum, str) else targ_illum
+    )
 
-    # Get white-points for illuminant
-    if isinstance(orig_illum, str):
-        orig_illum = orig_illum.lower()
-        wp_src = color_constants.ILLUMINANTS[observer][orig_illum]
-    elif hasattr(orig_illum, "__iter__"):
-        wp_src = orig_illum
-
-    if isinstance(targ_illum, str):
-        targ_illum = targ_illum.lower()
-        wp_dst = color_constants.ILLUMINANTS[observer][targ_illum]
-    elif hasattr(targ_illum, "__iter__"):
-        wp_dst = targ_illum
 
     logger.debug("  \\* Applying adaptation matrix: %s", adaptation)
     # Retrieve the appropriate transformation matrix from the constants.

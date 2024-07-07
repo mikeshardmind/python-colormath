@@ -1,17 +1,22 @@
-# -*- coding: utf-8 -*-
 """
 Contains lookup tables, constants, and things that are generally static
 and useful throughout the library.
 """
+from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import Literal
 
 import numpy
+import numpy.typing
 
-# Not sure what these are, they are used in Lab and Luv calculations.
+# Used in Lab and Luv calculations, see sections 6.3, 6.4 of
+# https://www.color.org/icc1v42.pdf
 CIE_E = 216.0 / 24389.0
 CIE_K = 24389.0 / 27.0
 
 # Observer Function and Illuminant Data
-ILLUMINANTS = {
+ILLUMINANTS: Mapping[Literal["2", "10"], Mapping[str, numpy.typing.ArrayLike]] = {
     # 2 Degree Functions
     "2": {
         "a": (1.09850, 1.00000, 0.35585),
@@ -36,10 +41,15 @@ ILLUMINANTS = {
 }
 
 OBSERVERS = ILLUMINANTS.keys()
+OBSERVERS_TYPE = Literal["2", "10"]
 
 # Chromatic Adaptation Matrices
 # http://brucelindbloom.com/Eqn_ChromAdapt.html
-ADAPTATION_MATRICES = {
+
+
+CHROMATIC_ADAPTIONS = Literal["xyz_scaling", "bradford", "von_kries"]
+
+ADAPTATION_MATRICES: Mapping[CHROMATIC_ADAPTIONS, numpy.typing.ArrayLike] = {
     "xyz_scaling": numpy.array(
         (
             (1.00000, 0.00000, 0.00000),

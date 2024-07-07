@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 This module contains classes to represent various color spaces.
 """
@@ -16,7 +15,7 @@ from colormath.color_exceptions import InvalidObserverError, InvalidIlluminantEr
 logger = logging.getLogger(__name__)
 
 
-class ColorBase(object):
+class ColorBase:
     """
     A base class holding some common methods and values.
     """
@@ -48,7 +47,7 @@ class ColorBase(object):
         for val in self.VALUES:
             value = getattr(self, val, None)
             if value is not None:
-                retval += "%s:%.4f " % (val, getattr(self, val))
+                retval += f"{val}:{getattr(self, val):.4f} "
         if hasattr(self, "observer"):
             retval += "observer:" + self.observer
         if hasattr(self, "illuminant"):
@@ -70,7 +69,7 @@ class ColorBase(object):
         return retval + ")"
 
 
-class IlluminantMixin(object):
+class IlluminantMixin:
     """
     Color spaces that have a notion of an illuminant should inherit this.
     """
@@ -263,7 +262,7 @@ class SpectralColor(IlluminantMixin, ColorBase):
         :keyword str illuminant: See :doc:`illuminants` for valid values.
         """
 
-        super(SpectralColor, self).__init__()
+        super().__init__()
         # Spectral fields
         self.spec_340nm = float(spec_340nm)
         self.spec_350nm = float(spec_350nm)
@@ -379,7 +378,7 @@ class LabColor(IlluminantMixin, ColorBase):
         :keyword str observer: Observer angle. Either ``'2'`` or ``'10'`` degrees.
         :keyword str illuminant: See :doc:`illuminants` for valid values.
         """
-        super(LabColor, self).__init__()
+        super().__init__()
         #: L coordinate
         self.lab_l = float(lab_l)
         #: a coordinate
@@ -417,7 +416,7 @@ class LCHabColor(IlluminantMixin, ColorBase):
         :keyword str observer: Observer angle. Either ``'2'`` or ``'10'`` degrees.
         :keyword str illuminant: See :doc:`illuminants` for valid values.
         """
-        super(LCHabColor, self).__init__()
+        super().__init__()
         #: L coordinate
         self.lch_l = float(lch_l)
         #: C coordinate
@@ -455,7 +454,7 @@ class LCHuvColor(IlluminantMixin, ColorBase):
         :keyword str observer: Observer angle. Either ``'2'`` or ``'10'`` degrees.
         :keyword str illuminant: See :doc:`illuminants` for valid values.
         """
-        super(LCHuvColor, self).__init__()
+        super().__init__()
         #: L coordinate
         self.lch_l = float(lch_l)
         #: C coordinate
@@ -487,7 +486,7 @@ class LuvColor(IlluminantMixin, ColorBase):
         :keyword str observer: Observer angle. Either ``'2'`` or ``'10'`` degrees.
         :keyword str illuminant: See :doc:`illuminants` for valid values.
         """
-        super(LuvColor, self).__init__()
+        super().__init__()
         #: L coordinate
         self.luv_l = float(luv_l)
         #: u coordinate
@@ -519,7 +518,7 @@ class XYZColor(IlluminantMixin, ColorBase):
         :keyword str observer: Observer angle. Either ``'2'`` or ``'10'`` degrees.
         :keyword str illuminant: See :doc:`illuminants` for valid values.
         """
-        super(XYZColor, self).__init__()
+        super().__init__()
         #: X coordinate
         self.xyz_x = float(xyz_x)
         #: Y coordinate
@@ -574,7 +573,7 @@ class xyYColor(IlluminantMixin, ColorBase):
         :keyword str observer: Observer angle. Either ``'2'`` or ``'10'`` degrees.
         :keyword str illuminant: See :doc:`illuminants` for valid values.
         """
-        super(xyYColor, self).__init__()
+        super().__init__()
         #: x coordinate
         self.xyy_x = float(xyy_x)
         #: y coordinate
@@ -608,7 +607,7 @@ class BaseRGBColor(ColorBase):
         :keyword bool is_upscaled: If False, RGB coordinate values are
             between 0.0 and 1.0. If True, RGB values are between 0 and 255.
         """
-        super(BaseRGBColor, self).__init__()
+        super().__init__()
         if is_upscaled:
             self.rgb_r = rgb_r / 255.0
             self.rgb_g = rgb_g / 255.0
@@ -672,7 +671,7 @@ class BaseRGBColor(ColorBase):
         :rtype: str
         """
         rgb_r, rgb_g, rgb_b = self.get_upscaled_value_tuple()
-        return "#%02x%02x%02x" % (rgb_r, rgb_g, rgb_b)
+        return f"#{rgb_r:02x}{rgb_g:02x}{rgb_b:02x}"
 
     @classmethod
     def new_from_rgb_hex(cls, hex_str):
@@ -688,7 +687,7 @@ class BaseRGBColor(ColorBase):
         if len(colorstring) != 6:
             raise ValueError("input #%s is not in #RRGGBB format" % colorstring)
         r, g, b = colorstring[:2], colorstring[2:4], colorstring[4:]
-        r, g, b = [int(n, 16) / 255.0 for n in (r, g, b)]
+        r, g, b = (int(n, 16) / 255.0 for n in (r, g, b))
         return cls(r, g, b)
 
 
@@ -854,7 +853,7 @@ class HSLColor(ColorBase):
         :param float hsl_s: S coordinate.
         :param float hsl_l: L coordinate.
         """
-        super(HSLColor, self).__init__()
+        super().__init__()
         #: H coordinate
         self.hsl_h = float(hsl_h)
         #: S coordinate
@@ -876,7 +875,7 @@ class HSVColor(ColorBase):
         :param float hsv_s: S coordinate.
         :param float hsv_v: V coordinate.
         """
-        super(HSVColor, self).__init__()
+        super().__init__()
         #: H coordinate
         self.hsv_h = float(hsv_h)
         #: S coordinate
@@ -898,7 +897,7 @@ class CMYColor(ColorBase):
         :param float cmy_m: M coordinate.
         :param float cmy_y: Y coordinate.
         """
-        super(CMYColor, self).__init__()
+        super().__init__()
         #: C coordinate
         self.cmy_c = float(cmy_c)
         #: M coordinate
@@ -921,7 +920,7 @@ class CMYKColor(ColorBase):
         :param float cmyk_y: Y coordinate.
         :param float cmyk_k: K coordinate.
         """
-        super(CMYKColor, self).__init__()
+        super().__init__()
         #: C coordinate
         self.cmyk_c = float(cmyk_c)
         #: M coordinate
@@ -966,7 +965,7 @@ class IPTColor(ColorBase):
         :param ipt_p: P coordinate.
         :param ipt_t: T coordinate.
         """
-        super(IPTColor, self).__init__()
+        super().__init__()
         #: I coordinate
         self.ipt_i = ipt_i
         #: P coordinate

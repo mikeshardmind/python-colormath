@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 This module contains exceptions for use throughout the L11 Colorlib.
 """
@@ -18,8 +17,8 @@ class UndefinedConversionError(ColorMathException):
     """
 
     def __init__(self, cobj, cs_to):
-        super(UndefinedConversionError, self).__init__(cobj, cs_to)
-        self.message = "Conversion from %s to %s is not defined." % (cobj, cs_to)
+        super().__init__(cobj, cs_to)
+        self.message = f"Conversion from {cobj} to {cs_to} is not defined."
 
 
 class InvalidIlluminantError(ColorMathException):
@@ -28,7 +27,7 @@ class InvalidIlluminantError(ColorMathException):
     """
 
     def __init__(self, illuminant):
-        super(InvalidIlluminantError, self).__init__(illuminant)
+        super().__init__(illuminant)
         self.message = "Invalid illuminant specified: %s" % illuminant
 
 
@@ -38,5 +37,5 @@ class InvalidObserverError(ColorMathException):
     """
 
     def __init__(self, cobj):
-        super(InvalidObserverError, self).__init__(cobj)
+        super().__init__(cobj)
         self.message = "Invalid observer angle specified: %s" % cobj.observer
