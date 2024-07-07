@@ -96,8 +96,11 @@ def apply_chromatic_adaptation(
     return result_matrix[0], result_matrix[1], result_matrix[2]
 
 
-# noinspection PyPep8Naming
-def apply_chromatic_adaptation_on_color(color, targ_illum, adaptation="bradford"):
+def apply_chromatic_adaptation_on_color(
+    color,
+    targ_illum,
+    adaptation: color_constants.CHROMATIC_ADAPTIONS="bradford"
+):
     """
     Convenience function to apply an adaptation directly to a Color object.
     """
