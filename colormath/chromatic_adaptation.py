@@ -8,7 +8,7 @@ import numpy
 import numpy.typing
 from numpy.linalg import pinv
 
-from colormath import color_objects, color_constants
+from colormath import color_constants, color_objects
 
 logger = logging.getLogger(__name__)
 
