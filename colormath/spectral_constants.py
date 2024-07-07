@@ -2,6 +2,7 @@
 Contains lookup tables, constants, and things that are generally static
 and useful throughout the library.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping

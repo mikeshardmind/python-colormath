@@ -2,19 +2,20 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
+from typing import TypeVar
 
 import numpy
 import numpy.typing
 from numpy.linalg import pinv
 
-from colormath import color_constants
+from colormath import color_objects, color_constants
 
 logger = logging.getLogger(__name__)
 
 
 def _get_adaptation_matrix(
-    wp_src: str | Sequence[float],
-    wp_dst: str | Sequence[float],
+    wp_src: color_constants.ILLUMINANTS_TYPE | Sequence[float],
+    wp_dst: color_constants.ILLUMINANTS_TYPE | Sequence[float],
     observer: color_constants.OBSERVERS_TYPE,
     adaptation: color_constants.CHROMATIC_ADAPTIONS,
 ):
@@ -34,13 +35,10 @@ def _get_adaptation_matrix(
     # In case the white-points are still input as strings
     # Get white-points for illuminant
     if isinstance(wp_src, str):
-        orig_illum = wp_src.lower()
-        wp_src = color_constants.ILLUMINANTS[observer][orig_illum]
-
+        wp_src = color_constants.ILLUMINANTS[observer][wp_src]
 
     if isinstance(wp_dst, str):
-        targ_illum = wp_dst.lower()
-        wp_dst = color_constants.ILLUMINANTS[observer][targ_illum]
+        wp_dst = color_constants.ILLUMINANTS[observer][wp_dst]
 
     # Sharpened cone responses ~ rho gamma beta ~ sharpened r g b
     rgb_src = numpy.dot(m_sharp, wp_src)
@@ -50,7 +48,8 @@ def _get_adaptation_matrix(
     m_rat = numpy.diag(rgb_dst / rgb_src)
 
     # Final transformation matrix
-    return numpy.dot(numpy.dot(pinv(m_sharp), m_rat), m_sharp)
+    ret = numpy.dot(numpy.dot(pinv(m_sharp), m_rat), m_sharp)
+    return ret  # noqa: RET504  # TODO: figure out why this is ending up as Any
 
 
 # noinspection PyPep8Naming
@@ -58,10 +57,10 @@ def apply_chromatic_adaptation(
     val_x: float,
     val_y: float,
     val_z: float,
-    orig_illum: str | Sequence[float],
-    targ_illum: str | Sequence[float],
-    observer: color_constants.OBSERVERS_TYPE="2",
-    adaptation: color_constants.CHROMATIC_ADAPTIONS="bradford"
+    orig_illum: color_constants.ILLUMINANTS_TYPE | Sequence[float],
+    targ_illum: color_constants.ILLUMINANTS_TYPE | Sequence[float],
+    observer: color_constants.OBSERVERS_TYPE = "2",
+    adaptation: color_constants.CHROMATIC_ADAPTIONS = "bradford",
 ) -> tuple[float, float, float]:
     """
     Applies a chromatic adaptation matrix to convert XYZ values between
@@ -82,7 +81,6 @@ def apply_chromatic_adaptation(
         color_constants.ILLUMINANTS[observer][targ_illum] if isinstance(targ_illum, str) else targ_illum
     )
 
-
     logger.debug("  \\* Applying adaptation matrix: %s", adaptation)
     # Retrieve the appropriate transformation matrix from the constants.
     transform_matrix = _get_adaptation_matrix(wp_src, wp_dst, observer, adaptation)
@@ -96,11 +94,14 @@ def apply_chromatic_adaptation(
     return result_matrix[0], result_matrix[1], result_matrix[2]
 
 
+ColorT = TypeVar("ColorT", bound=color_objects.XYZColor)
+
+
 def apply_chromatic_adaptation_on_color(
-    color,
-    targ_illum,
-    adaptation: color_constants.CHROMATIC_ADAPTIONS="bradford"
-):
+    color: ColorT,
+    targ_illum: color_constants.ILLUMINANTS_TYPE,
+    adaptation: color_constants.CHROMATIC_ADAPTIONS = "bradford",
+) -> ColorT:
     """
     Convenience function to apply an adaptation directly to a Color object.
     """
@@ -108,9 +109,7 @@ def apply_chromatic_adaptation_on_color(
     xyz_y = color.xyz_y
     xyz_z = color.xyz_z
     orig_illum = color.illuminant
-    targ_illum = targ_illum.lower()
     observer = color.observer
-    adaptation = adaptation.lower()
 
     # Return individual X, Y, and Z coordinates.
     color.xyz_x, color.xyz_y, color.xyz_z = apply_chromatic_adaptation(
@@ -123,5 +122,4 @@ def apply_chromatic_adaptation_on_color(
         adaptation=adaptation,
     )
     color.set_illuminant(targ_illum)
-
     return color

@@ -12,15 +12,11 @@ def delta_e_cie1976(lab_color_vector, lab_color_matrix):
     Calculates the Delta E (CIE1976) between `lab_color_vector` and all
     colors in `lab_color_matrix`.
     """
-    return numpy.sqrt(
-        numpy.sum(numpy.power(lab_color_vector - lab_color_matrix, 2), axis=1)
-    )
+    return numpy.sqrt(numpy.sum(numpy.power(lab_color_vector - lab_color_matrix, 2), axis=1))
 
 
 # noinspection PyPep8Naming
-def delta_e_cie1994(
-    lab_color_vector, lab_color_matrix, K_L=1, K_C=1, K_H=1, K_1=0.045, K_2=0.015
-):
+def delta_e_cie1994(lab_color_vector, lab_color_matrix, K_L=1, K_C=1, K_H=1, K_1=0.045, K_2=0.015):
     """
     Calculates the Delta E (CIE1994) of two colors.
 
@@ -85,7 +81,7 @@ def delta_e_cmc(lab_color_vector, lab_color_matrix, pl=2, pc=1):
     F = numpy.sqrt(numpy.power(C_1, 4) / (numpy.power(C_1, 4) + 1900.0))
 
     # noinspection PyChainedComparisons
-    if 164 <= H_1 and H_1 <= 345:
+    if H_1 >= 164 and H_1 <= 345:
         T = 0.56 + abs(0.2 * numpy.cos(numpy.radians(H_1 + 168)))
     else:
         T = 0.36 + abs(0.4 * numpy.cos(numpy.radians(H_1 + 35)))
@@ -124,13 +120,7 @@ def delta_e_cie2000(lab_color_vector, lab_color_matrix, Kl=1, Kc=1, Kh=1):
 
     avg_C1_C2 = (C1 + C2) / 2.0
 
-    G = 0.5 * (
-        1
-        - numpy.sqrt(
-            numpy.power(avg_C1_C2, 7.0)
-            / (numpy.power(avg_C1_C2, 7.0) + numpy.power(25.0, 7.0))
-        )
-    )
+    G = 0.5 * (1 - numpy.sqrt(numpy.power(avg_C1_C2, 7.0) / (numpy.power(avg_C1_C2, 7.0) + numpy.power(25.0, 7.0))))
 
     a1p = (1.0 + G) * a
     a2p = (1.0 + G) * lab_color_matrix[:, 1]
@@ -164,18 +154,12 @@ def delta_e_cie2000(lab_color_vector, lab_color_matrix, Kl=1, Kc=1, Kh=1):
     delta_Cp = C2p - C1p
     delta_Hp = 2 * numpy.sqrt(C2p * C1p) * numpy.sin(numpy.radians(delta_hp) / 2.0)
 
-    S_L = 1 + (
-        (0.015 * numpy.power(avg_Lp - 50, 2))
-        / numpy.sqrt(20 + numpy.power(avg_Lp - 50, 2.0))
-    )
+    S_L = 1 + ((0.015 * numpy.power(avg_Lp - 50, 2)) / numpy.sqrt(20 + numpy.power(avg_Lp - 50, 2.0)))
     S_C = 1 + 0.045 * avg_C1p_C2p
     S_H = 1 + 0.015 * avg_C1p_C2p * T
 
     delta_ro = 30 * numpy.exp(-(numpy.power(((avg_Hp - 275) / 25), 2.0)))
-    R_C = numpy.sqrt(
-        (numpy.power(avg_C1p_C2p, 7.0))
-        / (numpy.power(avg_C1p_C2p, 7.0) + numpy.power(25.0, 7.0))
-    )
+    R_C = numpy.sqrt((numpy.power(avg_C1p_C2p, 7.0)) / (numpy.power(avg_C1p_C2p, 7.0) + numpy.power(25.0, 7.0)))
     R_T = -2 * R_C * numpy.sin(2 * numpy.radians(delta_ro))
 
     return numpy.sqrt(

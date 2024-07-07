@@ -3,16 +3,19 @@ Formulas for density calculation.
 """
 
 from math import log10
+
+from colormath import color_objects
 from colormath.density_standards import (
     ANSI_STATUS_T_BLUE,
     ANSI_STATUS_T_GREEN,
     ANSI_STATUS_T_RED,
-    VISUAL_DENSITY_THRESH,
+    DENSITY_TYPE,
     ISO_VISUAL,
+    VISUAL_DENSITY_THRESH,
 )
 
 
-def ansi_density(color, density_standard):
+def ansi_density(color: color_objects.SpectralColor, density_standard: DENSITY_TYPE) -> float:
     """
     Calculates density for the given SpectralColor using the spectral weighting
     function provided. For example, ANSI_STATUS_T_RED. These may be found in
@@ -39,7 +42,7 @@ def ansi_density(color, density_standard):
     return -1.0 * log10(numerator / sum_of_standard_wavelengths)
 
 
-def auto_density(color):
+def auto_density(color: color_objects.SpectralColor) -> float:
     """
     Given a SpectralColor, automatically choose the correct ANSI T filter.
     Returns a tuple with a string representation of the filter the
@@ -63,9 +66,8 @@ def auto_density(color):
     # understand what this is doing.
     if density_range <= VISUAL_DENSITY_THRESH:
         return ansi_density(color, ISO_VISUAL)
-    elif blue_density > green_density and blue_density > red_density:
+    if blue_density > green_density and blue_density > red_density:
         return blue_density
-    elif green_density > blue_density and green_density > red_density:
+    if green_density > blue_density and green_density > red_density:
         return green_density
-    else:
-        return red_density
+    return red_density

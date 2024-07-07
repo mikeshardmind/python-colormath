@@ -2,15 +2,146 @@
 This module contains classes to represent various color spaces.
 """
 
+from __future__ import annotations
+
 import logging
-import math
+from collections.abc import Mapping, Sequence
+from typing import Any, TypeVar
 
 import numpy
+import numpy.typing
+from numpy.linalg import pinv
 
 from colormath import color_constants
-from colormath import density
+
+logger = logging.getLogger(__name__)
+
+
+def _get_adaptation_matrix(
+    wp_src: color_constants.ILLUMINANTS_TYPE | Sequence[float],
+    wp_dst: color_constants.ILLUMINANTS_TYPE | Sequence[float],
+    observer: color_constants.OBSERVERS_TYPE,
+    adaptation: color_constants.CHROMATIC_ADAPTIONS,
+):
+    """
+    Calculate the correct transformation matrix based on origin and target
+    illuminants. The observer angle must be the same between illuminants.
+
+    See colormath.color_constants.ADAPTATION_MATRICES for a list of possible
+    adaptations.
+
+    Detailed conversion documentation is available at:
+    http://brucelindbloom.com/Eqn_ChromAdapt.html
+    """
+    # Get the appropriate transformation matrix, [MsubA].
+    m_sharp = color_constants.ADAPTATION_MATRICES[adaptation]
+
+    # In case the white-points are still input as strings
+    # Get white-points for illuminant
+    if isinstance(wp_src, str):
+        wp_src = color_constants.ILLUMINANTS[observer][wp_src]
+
+    if isinstance(wp_dst, str):
+        wp_dst = color_constants.ILLUMINANTS[observer][wp_dst]
+
+    # Sharpened cone responses ~ rho gamma beta ~ sharpened r g b
+    rgb_src = numpy.dot(m_sharp, wp_src)
+    rgb_dst = numpy.dot(m_sharp, wp_dst)
+
+    # Ratio of whitepoint sharpened responses
+    m_rat = numpy.diag(rgb_dst / rgb_src)
+
+    # Final transformation matrix
+    ret = numpy.dot(numpy.dot(pinv(m_sharp), m_rat), m_sharp)
+    return ret  # noqa: RET504  # TODO: figure out why this is ending up as Any
+
+
+# noinspection PyPep8Naming
+def apply_chromatic_adaptation(
+    val_x: float,
+    val_y: float,
+    val_z: float,
+    orig_illum: color_constants.ILLUMINANTS_TYPE | Sequence[float],
+    targ_illum: color_constants.ILLUMINANTS_TYPE | Sequence[float],
+    observer: color_constants.OBSERVERS_TYPE = "2",
+    adaptation: color_constants.CHROMATIC_ADAPTIONS = "bradford",
+) -> tuple[float, float, float]:
+    """
+    Applies a chromatic adaptation matrix to convert XYZ values between
+    illuminants. It is important to recognize that color transformation results
+    in color errors, determined by how far the original illuminant is from the
+    target illuminant. For example, D65 to A could result in very high maximum
+    deviance.
+
+    An informative article with estimate average Delta E values for each
+    illuminant conversion may be found at:
+
+    http://brucelindbloom.com/ChromAdaptEval.html
+    """
+    wp_src: Sequence[float] = (
+        color_constants.ILLUMINANTS[observer][orig_illum] if isinstance(orig_illum, str) else orig_illum
+    )
+    wp_dst: Sequence[float] = (
+        color_constants.ILLUMINANTS[observer][targ_illum] if isinstance(targ_illum, str) else targ_illum
+    )
+
+    logger.debug("  \\* Applying adaptation matrix: %s", adaptation)
+    # Retrieve the appropriate transformation matrix from the constants.
+    transform_matrix = _get_adaptation_matrix(wp_src, wp_dst, observer, adaptation)
+
+    # Stuff the XYZ values into a NumPy matrix for conversion.
+    XYZ_matrix = numpy.array((val_x, val_y, val_z))
+    # Perform the adaptation via matrix multiplication.
+    result_matrix = numpy.dot(transform_matrix, XYZ_matrix)
+
+    # Return individual X, Y, and Z coordinates.
+    return result_matrix[0], result_matrix[1], result_matrix[2]
+
+
+ColorT = TypeVar("ColorT", bound=color_objects.XYZColor)
+
+
+def apply_chromatic_adaptation_on_color(
+    color: ColorT,
+    targ_illum: color_constants.ILLUMINANTS_TYPE,
+    adaptation: color_constants.CHROMATIC_ADAPTIONS = "bradford",
+) -> ColorT:
+    """
+    Convenience function to apply an adaptation directly to a Color object.
+    """
+    xyz_x = color.xyz_x
+    xyz_y = color.xyz_y
+    xyz_z = color.xyz_z
+    orig_illum = color.illuminant
+    observer = color.observer
+
+    # Return individual X, Y, and Z coordinates.
+    color.xyz_x, color.xyz_y, color.xyz_z = apply_chromatic_adaptation(
+        xyz_x,
+        xyz_y,
+        xyz_z,
+        orig_illum,
+        targ_illum,
+        observer=observer,
+        adaptation=adaptation,
+    )
+    color.set_illuminant(targ_illum)
+    return color
+
+
+
+import logging
+import math
+from collections.abc import Sequence
+from operator import attrgetter
+from typing import ClassVar, SupportsFloat
+
+import numpy
+from typing_extensions import override
+
+from colormath import color_constants, density, density_standards
 from colormath.chromatic_adaptation import apply_chromatic_adaptation_on_color
-from colormath.color_exceptions import InvalidObserverError, InvalidIlluminantError
+from colormath.color_exceptions import InvalidIlluminantError, InvalidObserverError
 
 logger = logging.getLogger(__name__)
 
@@ -22,119 +153,47 @@ class ColorBase:
 
     # Attribute names containing color data on the sub-class. For example,
     # sRGBColor would be ['rgb_r', 'rgb_g', 'rgb_b']
-    VALUES = []
+    VALUES: ClassVar[Sequence[str]] = ()
     # If this object as converted such that its values passed through an
     # RGB colorspace, this is set to the class for said RGB color space.
     # Allows reversing conversions automatically and accurately.
-    _through_rgb_type = None
+    _through_rgb_type: ClassVar[type["ColorBase"] | None] = None
 
-    def get_value_tuple(self):
+    def get_value_tuple(self) -> tuple[float, ...]:
         """
         Returns a tuple of the color's values (in order). For example,
         an LabColor object will return (lab_l, lab_a, lab_b), where each
         member of the tuple is the float value for said variable.
         """
-        retval = tuple()
-        for val in self.VALUES:
-            retval += (getattr(self, val),)
-        return retval
+        return attrgetter(*self.VALUES)(self)
 
-    def __str__(self):
+    @override
+    def __str__(self) -> str:
         """
         String representation of the color.
         """
+        # TODO: per class impl
         retval = self.__class__.__name__ + " ("
         for val in self.VALUES:
             value = getattr(self, val, None)
             if value is not None:
-                retval += f"{val}:{getattr(self, val):.4f} "
-        if hasattr(self, "observer"):
-            retval += "observer:" + self.observer
-        if hasattr(self, "illuminant"):
-            retval += " illuminant:" + self.illuminant
+                retval += f"{val}:{value:.4f} "
+        if observer := getattr(self, "observer", None):
+            retval += f" observer:{observer}"
+        if illuminant := getattr(self, "illuminant", None):
+            retval += f" illuminant: {illuminant}"
         return retval.strip() + ")"
 
-    def __repr__(self):
+    @override
+    def __repr__(self) -> str:
         """
         Evaluable string representation of the object.
         """
-        retval = self.__class__.__name__ + "("
-        attributes = [(attr, getattr(self, attr)) for attr in self.VALUES]
-        values = [x + "=" + repr(y) for x, y in attributes]
-        retval += ", ".join(values)
-        if hasattr(self, "observer"):
-            retval += ", observer='" + self.observer + "'"
-        if hasattr(self, "illuminant"):
-            retval += ", illuminant='" + self.illuminant + "'"
-        return retval + ")"
+        # TODO: proper repr, per class
+        return str(self)
 
 
-class IlluminantMixin:
-    """
-    Color spaces that have a notion of an illuminant should inherit this.
-    """
-
-    # noinspection PyAttributeOutsideInit
-    def set_observer(self, observer):
-        """
-        Validates and sets the color's observer angle.
-
-        .. note:: This only changes the observer angle value. It does no conversion
-            of the color's coordinates.
-
-        :param str observer: One of '2' or '10'.
-        """
-        observer = str(observer)
-        if observer not in color_constants.OBSERVERS:
-            raise InvalidObserverError(self)
-        self.observer = observer
-
-    # noinspection PyAttributeOutsideInit
-    def set_illuminant(self, illuminant):
-        """
-        Validates and sets the color's illuminant.
-
-        .. note:: This only changes the illuminant. It does no conversion
-            of the color's coordinates. For this, you'll want to refer to
-            :py:meth:`XYZColor.apply_adaptation \
-<colormath.color_objects.XYZColor.apply_adaptation>`.
-
-        .. tip:: Call this after setting your observer.
-
-        :param str illuminant: One of the various illuminants.
-        """
-        illuminant = illuminant.lower()
-        if illuminant not in color_constants.ILLUMINANTS[self.observer]:
-            raise InvalidIlluminantError(illuminant)
-        self.illuminant = illuminant
-
-    def get_illuminant_xyz(self, observer=None, illuminant=None):
-        """
-        :param str observer: Get the XYZ values for another observer angle. Must
-            be either '2' or '10'.
-        :param str illuminant: Get the XYZ values for another illuminant.
-        :returns: the color's illuminant's XYZ values.
-        """
-        try:
-            if observer is None:
-                observer = self.observer
-
-            illums_observer = color_constants.ILLUMINANTS[observer]
-        except KeyError:
-            raise InvalidObserverError(self)
-
-        try:
-            if illuminant is None:
-                illuminant = self.illuminant
-
-            illum_xyz = illums_observer[illuminant]
-        except (KeyError, AttributeError):
-            raise InvalidIlluminantError(illuminant)
-
-        return {"X": illum_xyz[0], "Y": illum_xyz[1], "Z": illum_xyz[2]}
-
-
-class SpectralColor(IlluminantMixin, ColorBase):
+class SpectralColor(ColorBase):
     """
     A SpectralColor represents a spectral power distribution, as read by
     a spectrophotometer. Our current implementation has wavelength intervals
@@ -148,6 +207,61 @@ class SpectralColor(IlluminantMixin, ColorBase):
 <http://en.wikipedia.org/wiki/Spectral_power_distribution>`_
     on Wikipedia for some higher level details on how these work.
     """
+
+    observer: color_constants.OBSERVERS_TYPE
+    illuminant: color_constants.ILLUMINANTS_TYPE
+
+    def set_observer(self, observer: color_constants.OBSERVERS_TYPE) -> None:
+        """
+        Validates and sets the color's observer angle.
+
+        .. note:: This only changes the observer angle value. It does no conversion
+            of the color's coordinates.
+
+        :param str observer: One of '2' or '10'.
+        """
+
+        if observer not in color_constants.OBSERVERS:
+            raise InvalidObserverError(self)
+        self.observer = observer
+
+    def set_illuminant(self, illuminant: color_constants.ILLUMINANTS_TYPE) -> None:
+        """
+        Validates and sets the color's illuminant.
+
+        .. note:: This only changes the illuminant. It does no conversion
+            of the color's coordinates. For this, you'll want to refer to
+            :py:meth:`XYZColor.apply_adaptation \
+<colormath.color_objects.XYZColor.apply_adaptation>`.
+
+        .. tip:: Call this after setting your observer.
+
+        :param str illuminant: One of the various illuminants.
+        """
+        if illuminant not in color_constants.ILLUMINANTS[self.observer]:
+            raise InvalidIlluminantError(illuminant)
+        self.illuminant = illuminant
+
+    def get_illuminant_xyz(
+        self, observer: color_constants.OBSERVERS_TYPE | None, illuminant: color_constants.ILLUMINANTS_TYPE | None
+    ) -> dict[str, float]:
+        """
+        :param str observer: Get the XYZ values for another observer angle. Must
+            be either '2' or '10'.
+        :param str illuminant: Get the XYZ values for another illuminant.
+        :returns: the color's illuminant's XYZ values.
+        """
+        try:
+            illums_observer = color_constants.ILLUMINANTS[observer or self.observer]
+        except KeyError:
+            raise InvalidObserverError(self) from None
+
+        try:
+            illum_xyz = illums_observer[illuminant or self.illuminant]
+        except (KeyError, AttributeError):
+            raise InvalidIlluminantError(illuminant) from None
+
+        return {"X": illum_xyz[0], "Y": illum_xyz[1], "Z": illum_xyz[2]}
 
     VALUES = [
         "spec_340nm",
@@ -204,58 +318,58 @@ class SpectralColor(IlluminantMixin, ColorBase):
 
     def __init__(
         self,
-        spec_340nm=0.0,
-        spec_350nm=0.0,
-        spec_360nm=0.0,
-        spec_370nm=0.0,
-        spec_380nm=0.0,
-        spec_390nm=0.0,
-        spec_400nm=0.0,
-        spec_410nm=0.0,
-        spec_420nm=0.0,
-        spec_430nm=0.0,
-        spec_440nm=0.0,
-        spec_450nm=0.0,
-        spec_460nm=0.0,
-        spec_470nm=0.0,
-        spec_480nm=0.0,
-        spec_490nm=0.0,
-        spec_500nm=0.0,
-        spec_510nm=0.0,
-        spec_520nm=0.0,
-        spec_530nm=0.0,
-        spec_540nm=0.0,
-        spec_550nm=0.0,
-        spec_560nm=0.0,
-        spec_570nm=0.0,
-        spec_580nm=0.0,
-        spec_590nm=0.0,
-        spec_600nm=0.0,
-        spec_610nm=0.0,
-        spec_620nm=0.0,
-        spec_630nm=0.0,
-        spec_640nm=0.0,
-        spec_650nm=0.0,
-        spec_660nm=0.0,
-        spec_670nm=0.0,
-        spec_680nm=0.0,
-        spec_690nm=0.0,
-        spec_700nm=0.0,
-        spec_710nm=0.0,
-        spec_720nm=0.0,
-        spec_730nm=0.0,
-        spec_740nm=0.0,
-        spec_750nm=0.0,
-        spec_760nm=0.0,
-        spec_770nm=0.0,
-        spec_780nm=0.0,
-        spec_790nm=0.0,
-        spec_800nm=0.0,
-        spec_810nm=0.0,
-        spec_820nm=0.0,
-        spec_830nm=0.0,
-        observer="2",
-        illuminant="d50",
+        spec_340nm: float = 0.0,
+        spec_350nm: float = 0.0,
+        spec_360nm: float = 0.0,
+        spec_370nm: float = 0.0,
+        spec_380nm: float = 0.0,
+        spec_390nm: float = 0.0,
+        spec_400nm: float = 0.0,
+        spec_410nm: float = 0.0,
+        spec_420nm: float = 0.0,
+        spec_430nm: float = 0.0,
+        spec_440nm: float = 0.0,
+        spec_450nm: float = 0.0,
+        spec_460nm: float = 0.0,
+        spec_470nm: float = 0.0,
+        spec_480nm: float = 0.0,
+        spec_490nm: float = 0.0,
+        spec_500nm: float = 0.0,
+        spec_510nm: float = 0.0,
+        spec_520nm: float = 0.0,
+        spec_530nm: float = 0.0,
+        spec_540nm: float = 0.0,
+        spec_550nm: float = 0.0,
+        spec_560nm: float = 0.0,
+        spec_570nm: float = 0.0,
+        spec_580nm: float = 0.0,
+        spec_590nm: float = 0.0,
+        spec_600nm: float = 0.0,
+        spec_610nm: float = 0.0,
+        spec_620nm: float = 0.0,
+        spec_630nm: float = 0.0,
+        spec_640nm: float = 0.0,
+        spec_650nm: float = 0.0,
+        spec_660nm: float = 0.0,
+        spec_670nm: float = 0.0,
+        spec_680nm: float = 0.0,
+        spec_690nm: float = 0.0,
+        spec_700nm: float = 0.0,
+        spec_710nm: float = 0.0,
+        spec_720nm: float = 0.0,
+        spec_730nm: float = 0.0,
+        spec_740nm: float = 0.0,
+        spec_750nm: float = 0.0,
+        spec_760nm: float = 0.0,
+        spec_770nm: float = 0.0,
+        spec_780nm: float = 0.0,
+        spec_790nm: float = 0.0,
+        spec_800nm: float = 0.0,
+        spec_810nm: float = 0.0,
+        spec_820nm: float = 0.0,
+        spec_830nm: float = 0.0,
+        observer: color_constants.OBSERVERS_TYPE = "2",
+        illuminant: color_constants.ILLUMINANTS_TYPE = "d50",
     ):
         """
         :keyword str observer: Observer angle. Either ``'2'`` or ``'10'`` degrees.
@@ -321,11 +435,6 @@ class SpectralColor(IlluminantMixin, ColorBase):
         self.spec_820nm = float(spec_820nm)
         self.spec_830nm = float(spec_830nm)
 
-        #: The color's observer angle. Set with :py:meth:`set_observer`.
-        self.observer = None
-        #: The color's illuminant. Set with :py:meth:`set_illuminant`.
-        self.illuminant = None
-
         self.set_observer(observer)
         self.set_illuminant(illuminant)
 
@@ -336,7 +445,7 @@ class SpectralColor(IlluminantMixin, ColorBase):
         # This holds the obect's spectral data, and will be passed to
         # numpy.array() to create a numpy array (matrix) for the matrix math
         # that will be done during the conversion to XYZ.
-        values = []
+        values: list[float] = []
 
         # Use the required value list to build this dynamically. Default to
         # 0.0, since that ultimately won't affect the outcome due to the math
@@ -348,7 +457,7 @@ class SpectralColor(IlluminantMixin, ColorBase):
         color_array = numpy.array([values])
         return color_array
 
-    def calc_density(self, density_standard=None):
+    def calc_density(self, density_standard: density_standards.DENSITY_TYPE | None) -> float:
         """
         Calculates the density of the SpectralColor. By default, Status T
         density is used, and the correct density distribution (Red, Green,
@@ -361,16 +470,78 @@ class SpectralColor(IlluminantMixin, ColorBase):
             return density.auto_density(self)
 
 
-class LabColor(IlluminantMixin, ColorBase):
+class LabColor(ColorBase):
     """
     Represents a CIE Lab color. For more information on CIE Lab,
     see `Lab color space <http://en.wikipedia.org/wiki/Lab_color_space>`_ on
     Wikipedia.
     """
 
+    observer: color_constants.OBSERVERS_TYPE
+    illuminant: color_constants.ILLUMINANTS_TYPE
+
+    def set_observer(self, observer: color_constants.OBSERVERS_TYPE) -> None:
+        """
+        Validates and sets the color's observer angle.
+
+        .. note:: This only changes the observer angle value. It does no conversion
+            of the color's coordinates.
+
+        :param str observer: One of '2' or '10'.
+        """
+
+        if observer not in color_constants.OBSERVERS:
+            raise InvalidObserverError(self)
+        self.observer = observer
+
+    def set_illuminant(self, illuminant: color_constants.ILLUMINANTS_TYPE) -> None:
+        """
+        Validates and sets the color's illuminant.
+
+        .. note:: This only changes the illuminant. It does no conversion
+            of the color's coordinates. For this, you'll want to refer to
+            :py:meth:`XYZColor.apply_adaptation \
+<colormath.color_objects.XYZColor.apply_adaptation>`.
+
+        .. tip:: Call this after setting your observer.
+
+        :param str illuminant: One of the various illuminants.
+        """
+        if illuminant not in color_constants.ILLUMINANTS[self.observer]:
+            raise InvalidIlluminantError(illuminant)
+        self.illuminant = illuminant
+
+    def get_illuminant_xyz(
+        self, observer: color_constants.OBSERVERS_TYPE | None, illuminant: color_constants.ILLUMINANTS_TYPE | None
+    ) -> dict[str, float]:
+        """
+        :param str observer: Get the XYZ values for another observer angle. Must
+            be either '2' or '10'.
+        :param str illuminant: Get the XYZ values for another illuminant.
+        :returns: the color's illuminant's XYZ values.
+        """
+        try:
+            illums_observer = color_constants.ILLUMINANTS[observer or self.observer]
+        except KeyError:
+            raise InvalidObserverError(self) from None
+
+        try:
+            illum_xyz = illums_observer[illuminant or self.illuminant]
+        except (KeyError, AttributeError):
+            raise InvalidIlluminantError(illuminant) from None
+
+        return {"X": illum_xyz[0], "Y": illum_xyz[1], "Z": illum_xyz[2]}
+
     VALUES = ["lab_l", "lab_a", "lab_b"]
 
-    def __init__(self, lab_l, lab_a, lab_b, observer="2", illuminant="d50"):
+    def __init__(
+        self,
+        lab_l: SupportsFloat,
+        lab_a: SupportsFloat,
+        lab_b: SupportsFloat,
+        observer: color_constants.OBSERVERS_TYPE = "2",
+        illuminant: color_constants.ILLUMINANTS_TYPE = "d50",
+    ):
         """
         :param float lab_l: L coordinate.
         :param float lab_a: a coordinate.
@@ -395,7 +566,7 @@ class LabColor(IlluminantMixin, ColorBase):
         self.set_illuminant(illuminant)
 
 
-class LCHabColor(IlluminantMixin, ColorBase):
+class LCHabColor(ColorBase):
     """
     Represents an CIE LCH color that was converted to LCH by passing through
     CIE Lab.  This differs from :py:class:`LCHuvColor`, which was converted to
@@ -406,6 +577,61 @@ class LCHabColor(IlluminantMixin, ColorBase):
     illustration of how CIE LCH differs from CIE Lab.
     """
 
+    observer: color_constants.OBSERVERS_TYPE
+    illuminant: color_constants.ILLUMINANTS_TYPE
+
+    def set_observer(self, observer: color_constants.OBSERVERS_TYPE) -> None:
+        """
+        Validates and sets the color's observer angle.
+
+        .. note:: This only changes the observer angle value. It does no conversion
+            of the color's coordinates.
+
+        :param str observer: One of '2' or '10'.
+        """
+
+        if observer not in color_constants.OBSERVERS:
+            raise InvalidObserverError(self)
+        self.observer = observer
+
+    def set_illuminant(self, illuminant: color_constants.ILLUMINANTS_TYPE) -> None:
+        """
+        Validates and sets the color's illuminant.
+
+        .. note:: This only changes the illuminant. It does no conversion
+            of the color's coordinates. For this, you'll want to refer to
+            :py:meth:`XYZColor.apply_adaptation \
+<colormath.color_objects.XYZColor.apply_adaptation>`.
+
+        .. tip:: Call this after setting your observer.
+
+        :param str illuminant: One of the various illuminants.
+        """
+        if illuminant not in color_constants.ILLUMINANTS[self.observer]:
+            raise InvalidIlluminantError(illuminant)
+        self.illuminant = illuminant
+
+    def get_illuminant_xyz(
+        self, observer: color_constants.OBSERVERS_TYPE | None, illuminant: color_constants.ILLUMINANTS_TYPE | None
+    ) -> dict[str, float]:
+        """
+        :param str observer: Get the XYZ values for another observer angle. Must
+            be either '2' or '10'.
+        :param str illuminant: Get the XYZ values for another illuminant.
+        :returns: the color's illuminant's XYZ values.
+        """
+        try:
+            illums_observer = color_constants.ILLUMINANTS[observer or self.observer]
+        except KeyError:
+            raise InvalidObserverError(self) from None
+
+        try:
+            illum_xyz = illums_observer[illuminant or self.illuminant]
+        except (KeyError, AttributeError):
+            raise InvalidIlluminantError(illuminant) from None
+
+        return {"X": illum_xyz[0], "Y": illum_xyz[1], "Z": illum_xyz[2]}
+
     VALUES = ["lch_l", "lch_c", "lch_h"]
 
     def __init__(self, lch_l, lch_c, lch_h, observer="2", illuminant="d50"):
@@ -433,7 +659,7 @@ class LCHabColor(IlluminantMixin, ColorBase):
         self.set_illuminant(illuminant)
 
 
-class LCHuvColor(IlluminantMixin, ColorBase):
+class LCHuvColor(ColorBase):
     """
     Represents an CIE LCH color that was converted to LCH by passing through
     CIE Luv.  This differs from :py:class:`LCHabColor`, which was converted to
@@ -444,6 +670,61 @@ class LCHuvColor(IlluminantMixin, ColorBase):
     illustration of how CIE LCH differs from CIE Lab.
     """
 
+    observer: color_constants.OBSERVERS_TYPE
+    illuminant: color_constants.ILLUMINANTS_TYPE
+
+    def set_observer(self, observer: color_constants.OBSERVERS_TYPE) -> None:
+        """
+        Validates and sets the color's observer angle.
+
+        .. note:: This only changes the observer angle value. It does no conversion
+            of the color's coordinates.
+
+        :param str observer: One of '2' or '10'.
+        """
+
+        if observer not in color_constants.OBSERVERS:
+            raise InvalidObserverError(self)
+        self.observer = observer
+
+    def set_illuminant(self, illuminant: color_constants.ILLUMINANTS_TYPE) -> None:
+        """
+        Validates and sets the color's illuminant.
+
+        .. note:: This only changes the illuminant. It does no conversion
+            of the color's coordinates. For this, you'll want to refer to
+            :py:meth:`XYZColor.apply_adaptation \
+<colormath.color_objects.XYZColor.apply_adaptation>`.
+
+        .. tip:: Call this after setting your observer.
+
+        :param str illuminant: One of the various illuminants.
+        """
+        if illuminant not in color_constants.ILLUMINANTS[self.observer]:
+            raise InvalidIlluminantError(illuminant)
+        self.illuminant = illuminant
+
+    def get_illuminant_xyz(
+        self, observer: color_constants.OBSERVERS_TYPE | None, illuminant: color_constants.ILLUMINANTS_TYPE | None
+    ) -> dict[str, float]:
+        """
+        :param str observer: Get the XYZ values for another observer angle. Must
+            be either '2' or '10'.
+        :param str illuminant: Get the XYZ values for another illuminant.
+        :returns: the color's illuminant's XYZ values.
+        """
+        try:
+            illums_observer = color_constants.ILLUMINANTS[observer or self.observer]
+        except KeyError:
+            raise InvalidObserverError(self) from None
+
+        try:
+            illum_xyz = illums_observer[illuminant or self.illuminant]
+        except (KeyError, AttributeError):
+            raise InvalidIlluminantError(illuminant) from None
+
+        return {"X": illum_xyz[0], "Y": illum_xyz[1], "Z": illum_xyz[2]}
+
     VALUES = ["lch_l", "lch_c", "lch_h"]
 
     def __init__(self, lch_l, lch_c, lch_h, observer="2", illuminant="d50"):
@@ -471,10 +752,65 @@ class LCHuvColor(IlluminantMixin, ColorBase):
         self.set_illuminant(illuminant)
 
 
-class LuvColor(IlluminantMixin, ColorBase):
+class LuvColor(ColorBase):
     """
     Represents an Luv color.
     """
+
+    observer: color_constants.OBSERVERS_TYPE
+    illuminant: color_constants.ILLUMINANTS_TYPE
+
+    def set_observer(self, observer: color_constants.OBSERVERS_TYPE) -> None:
+        """
+        Validates and sets the color's observer angle.
+
+        .. note:: This only changes the observer angle value. It does no conversion
+            of the color's coordinates.
+
+        :param str observer: One of '2' or '10'.
+        """
+
+        if observer not in color_constants.OBSERVERS:
+            raise InvalidObserverError(self)
+        self.observer = observer
+
+    def set_illuminant(self, illuminant: color_constants.ILLUMINANTS_TYPE) -> None:
+        """
+        Validates and sets the color's illuminant.
+
+        .. note:: This only changes the illuminant. It does no conversion
+            of the color's coordinates. For this, you'll want to refer to
+            :py:meth:`XYZColor.apply_adaptation \
+<colormath.color_objects.XYZColor.apply_adaptation>`.
+
+        .. tip:: Call this after setting your observer.
+
+        :param str illuminant: One of the various illuminants.
+        """
+        if illuminant not in color_constants.ILLUMINANTS[self.observer]:
+            raise InvalidIlluminantError(illuminant)
+        self.illuminant = illuminant
+
+    def get_illuminant_xyz(
+        self, observer: color_constants.OBSERVERS_TYPE | None, illuminant: color_constants.ILLUMINANTS_TYPE | None
+    ) -> dict[str, float]:
+        """
+        :param str observer: Get the XYZ values for another observer angle. Must
+            be either '2' or '10'.
+        :param str illuminant: Get the XYZ values for another illuminant.
+        :returns: the color's illuminant's XYZ values.
+        """
+        try:
+            illums_observer = color_constants.ILLUMINANTS[observer or self.observer]
+        except KeyError:
+            raise InvalidObserverError(self) from None
+
+        try:
+            illum_xyz = illums_observer[illuminant or self.illuminant]
+        except (KeyError, AttributeError):
+            raise InvalidIlluminantError(illuminant) from None
+
+        return {"X": illum_xyz[0], "Y": illum_xyz[1], "Z": illum_xyz[2]}
 
     VALUES = ["luv_l", "luv_u", "luv_v"]
 
@@ -503,10 +839,65 @@ class LuvColor(IlluminantMixin, ColorBase):
         self.set_illuminant(illuminant)
 
 
-class XYZColor(IlluminantMixin, ColorBase):
+class XYZColor(ColorBase):
     """
     Represents an XYZ color.
     """
+
+    observer: color_constants.OBSERVERS_TYPE
+    illuminant: color_constants.ILLUMINANTS_TYPE
+
+    def set_observer(self, observer: color_constants.OBSERVERS_TYPE) -> None:
+        """
+        Validates and sets the color's observer angle.
+
+        .. note:: This only changes the observer angle value. It does no conversion
+            of the color's coordinates.
+
+        :param str observer: One of '2' or '10'.
+        """
+
+        if observer not in color_constants.OBSERVERS:
+            raise InvalidObserverError(self)
+        self.observer = observer
+
+    def set_illuminant(self, illuminant: color_constants.ILLUMINANTS_TYPE) -> None:
+        """
+        Validates and sets the color's illuminant.
+
+        .. note:: This only changes the illuminant. It does no conversion
+            of the color's coordinates. For this, you'll want to refer to
+            :py:meth:`XYZColor.apply_adaptation \
+<colormath.color_objects.XYZColor.apply_adaptation>`.
+
+        .. tip:: Call this after setting your observer.
+
+        :param str illuminant: One of the various illuminants.
+        """
+        if illuminant not in color_constants.ILLUMINANTS[self.observer]:
+            raise InvalidIlluminantError(illuminant)
+        self.illuminant = illuminant
+
+    def get_illuminant_xyz(
+        self, observer: color_constants.OBSERVERS_TYPE | None, illuminant: color_constants.ILLUMINANTS_TYPE | None
+    ) -> dict[str, float]:
+        """
+        :param str observer: Get the XYZ values for another observer angle. Must
+            be either '2' or '10'.
+        :param str illuminant: Get the XYZ values for another illuminant.
+        :returns: the color's illuminant's XYZ values.
+        """
+        try:
+            illums_observer = color_constants.ILLUMINANTS[observer or self.observer]
+        except KeyError:
+            raise InvalidObserverError(self) from None
+
+        try:
+            illum_xyz = illums_observer[illuminant or self.illuminant]
+        except (KeyError, AttributeError):
+            raise InvalidIlluminantError(illuminant) from None
+
+        return {"X": illum_xyz[0], "Y": illum_xyz[1], "Z": illum_xyz[2]}
 
     VALUES = ["xyz_x", "xyz_y", "xyz_z"]
 
@@ -525,11 +916,6 @@ class XYZColor(IlluminantMixin, ColorBase):
         self.xyz_y = float(xyz_y)
         #: Z coordinate
         self.xyz_z = float(xyz_z)
-
-        #: The color's observer angle. Set with :py:meth:`set_observer`.
-        self.observer = None
-        #: The color's illuminant. Set with :py:meth:`set_illuminant`.
-        self.illuminant = None
 
         self.set_observer(observer)
         self.set_illuminant(illuminant)
@@ -552,16 +938,69 @@ class XYZColor(IlluminantMixin, ColorBase):
                 target_illuminant,
             )
             # Sets the adjusted XYZ values, and the new illuminant.
-            apply_chromatic_adaptation_on_color(
-                color=self, targ_illum=target_illuminant, adaptation=adaptation
-            )
+            apply_chromatic_adaptation_on_color(color=self, targ_illum=target_illuminant, adaptation=adaptation)
 
 
 # noinspection PyPep8Naming
-class xyYColor(IlluminantMixin, ColorBase):
+class xyYColor(ColorBase):
     """
     Represents an xyY color.
     """
+
+    observer: color_constants.OBSERVERS_TYPE
+    illuminant: color_constants.ILLUMINANTS_TYPE
+
+    def set_observer(self, observer: color_constants.OBSERVERS_TYPE) -> None:
+        """
+        Validates and sets the color's observer angle.
+
+        .. note:: This only changes the observer angle value. It does no conversion
+            of the color's coordinates.
+
+        :param str observer: One of '2' or '10'.
+        """
+
+        if observer not in color_constants.OBSERVERS:
+            raise InvalidObserverError(self)
+        self.observer = observer
+
+    def set_illuminant(self, illuminant: color_constants.ILLUMINANTS_TYPE) -> None:
+        """
+        Validates and sets the color's illuminant.
+
+        .. note:: This only changes the illuminant. It does no conversion
+            of the color's coordinates. For this, you'll want to refer to
+            :py:meth:`XYZColor.apply_adaptation \
+<colormath.color_objects.XYZColor.apply_adaptation>`.
+
+        .. tip:: Call this after setting your observer.
+
+        :param str illuminant: One of the various illuminants.
+        """
+        if illuminant not in color_constants.ILLUMINANTS[self.observer]:
+            raise InvalidIlluminantError(illuminant)
+        self.illuminant = illuminant
+
+    def get_illuminant_xyz(
+        self, observer: color_constants.OBSERVERS_TYPE | None, illuminant: color_constants.ILLUMINANTS_TYPE | None
+    ) -> dict[str, float]:
+        """
+        :param str observer: Get the XYZ values for another observer angle. Must
+            be either '2' or '10'.
+        :param str illuminant: Get the XYZ values for another illuminant.
+        :returns: the color's illuminant's XYZ values.
+        """
+        try:
+            illums_observer = color_constants.ILLUMINANTS[observer or self.observer]
+        except KeyError:
+            raise InvalidObserverError(self) from None
+
+        try:
+            illum_xyz = illums_observer[illuminant or self.illuminant]
+        except (KeyError, AttributeError):
+            raise InvalidIlluminantError(illuminant) from None
+
+        return {"X": illum_xyz[0], "Y": illum_xyz[1], "Z": illum_xyz[2]}
 
     VALUES = ["xyy_x", "xyy_y", "xyy_Y"]
 
@@ -822,7 +1261,7 @@ class AppleRGBColor(BaseRGBColor):
     rgb_gamma = 1.8
     #: The RGB space's native illuminant. Important when converting to XYZ.
     native_illuminant = "d65"
-    conversion_matrices = {
+    conversion_matrices: Mapping[str, numpy.typing.NDArray[Any]] = {
         "xyz_to_rgb": numpy.array(
             (
                 (2.9515373, -1.2894116, -0.4738445),

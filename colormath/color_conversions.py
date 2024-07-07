@@ -4,37 +4,35 @@ Conversion between color spaces.
 .. note:: This module makes extensive use of imports within functions.
     That stinks.
 """
+
+import logging
+import math
 from abc import ABCMeta, abstractmethod
 
-import math
-import logging
-
-import numpy
 import networkx
+import numpy
 
-from colormath import color_constants
-from colormath import spectral_constants
-from colormath.color_objects import (
-    ColorBase,
-    XYZColor,
-    sRGBColor,
-    LCHabColor,
-    LCHuvColor,
-    LabColor,
-    xyYColor,
-    LuvColor,
-    HSVColor,
-    HSLColor,
-    CMYColor,
-    CMYKColor,
-    BaseRGBColor,
-    IPTColor,
-    SpectralColor,
-    BT2020Color,
-)
+from colormath import color_constants, spectral_constants
 from colormath.chromatic_adaptation import apply_chromatic_adaptation
 from colormath.color_exceptions import InvalidIlluminantError, UndefinedConversionError
-
+from colormath.color_objects import (
+    BaseRGBColor,
+    BT2020Color,
+    CMYColor,
+    CMYKColor,
+    ColorBase,
+    HSLColor,
+    HSVColor,
+    IPTColor,
+    LabColor,
+    LCHabColor,
+    LCHuvColor,
+    LuvColor,
+    SpectralColor,
+    XYZColor,
+    sRGBColor,
+    xyYColor,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -99,7 +97,6 @@ class ConversionManager:
         :param target_type: Target color space type.
         :return: List of conversion functions.
         """
-        pass
 
     @staticmethod
     def _normalise_type(color_type):
@@ -126,7 +123,8 @@ class GraphConversionManager(ConversionManager):
             return self._find_shortest_path(start_type, target_type)
         except (networkx.NetworkXNoPath, networkx.NodeNotFound):
             raise UndefinedConversionError(
-                start_type, target_type,
+                start_type,
+                target_type,
             )
 
     def _find_shortest_path(self, start_type, target_type):
@@ -135,16 +133,12 @@ class GraphConversionManager(ConversionManager):
         # for each edge.
         return [
             self.conversion_graph.get_edge_data(node_a, node_b)["conversion_function"]
-            for node_a, node_b in zip(path[:-1], path[1:])
+            for node_a, node_b in zip(path[:-1], path[1:], strict=False)
         ]
 
     def add_type_conversion(self, start_type, target_type, conversion_function):
-        super().add_type_conversion(
-            start_type, target_type, conversion_function
-        )
-        self.conversion_graph.add_edge(
-            start_type, target_type, conversion_function=conversion_function
-        )
+        super().add_type_conversion(start_type, target_type, conversion_function)
+        self.conversion_graph.add_edge(start_type, target_type, conversion_function=conversion_function)
 
 
 class DummyConversionManager(ConversionManager):
@@ -153,7 +147,8 @@ class DummyConversionManager(ConversionManager):
 
     def get_conversion_path(self, start_type, target_type):
         raise UndefinedConversionError(
-            start_type, target_type,
+            start_type,
+            target_type,
         )
 
 
@@ -234,9 +229,7 @@ def Spectral_to_XYZ(cobj, illuminant_override=None, *args, **kwargs):
     xyz_y = y_numerator.sum() / denom.sum()
     xyz_z = z_numerator.sum() / denom.sum()
 
-    return XYZColor(
-        xyz_x, xyz_y, xyz_z, observer=cobj.observer, illuminant=cobj.illuminant
-    )
+    return XYZColor(xyz_x, xyz_y, xyz_z, observer=cobj.observer, illuminant=cobj.illuminant)
 
 
 # noinspection PyPep8Naming,PyUnusedLocal
@@ -254,9 +247,7 @@ def Lab_to_LCHab(cobj, *args, **kwargs):
     else:
         lch_h = 360 - (math.fabs(lch_h) / math.pi) * 180
 
-    return LCHabColor(
-        lch_l, lch_c, lch_h, observer=cobj.observer, illuminant=cobj.illuminant
-    )
+    return LCHabColor(lch_l, lch_c, lch_h, observer=cobj.observer, illuminant=cobj.illuminant)
 
 
 # noinspection PyPep8Naming,PyUnusedLocal
@@ -270,10 +261,7 @@ def Lab_to_XYZ(cobj, *args, **kwargs):
     xyz_x = cobj.lab_a / 500.0 + xyz_y
     xyz_z = xyz_y - cobj.lab_b / 200.0
 
-    if math.pow(xyz_y, 3) > color_constants.CIE_E:
-        xyz_y = math.pow(xyz_y, 3)
-    else:
-        xyz_y = (xyz_y - 16.0 / 116.0) / 7.787
+    xyz_y = math.pow(xyz_y, 3) if math.pow(xyz_y, 3) > color_constants.CIE_E else (xyz_y - 16.0 / 116.0) / 7.787
 
     if math.pow(xyz_x, 3) > color_constants.CIE_E:
         xyz_x = math.pow(xyz_x, 3)
@@ -289,9 +277,7 @@ def Lab_to_XYZ(cobj, *args, **kwargs):
     xyz_y = illum["Y"] * xyz_y
     xyz_z = illum["Z"] * xyz_z
 
-    return XYZColor(
-        xyz_x, xyz_y, xyz_z, observer=cobj.observer, illuminant=cobj.illuminant
-    )
+    return XYZColor(xyz_x, xyz_y, xyz_z, observer=cobj.observer, illuminant=cobj.illuminant)
 
 
 # noinspection PyPep8Naming,PyUnusedLocal
@@ -308,9 +294,7 @@ def Luv_to_LCHuv(cobj, *args, **kwargs):
         lch_h = (lch_h / math.pi) * 180
     else:
         lch_h = 360 - (math.fabs(lch_h) / math.pi) * 180
-    return LCHuvColor(
-        lch_l, lch_c, lch_h, observer=cobj.observer, illuminant=cobj.illuminant
-    )
+    return LCHuvColor(lch_l, lch_c, lch_h, observer=cobj.observer, illuminant=cobj.illuminant)
 
 
 # noinspection PyPep8Naming,PyUnusedLocal
@@ -326,9 +310,7 @@ def Luv_to_XYZ(cobj, *args, **kwargs):
         xyz_x = 0.0
         xyz_y = 0.0
         xyz_z = 0.0
-        return XYZColor(
-            xyz_x, xyz_y, xyz_z, observer=cobj.observer, illuminant=cobj.illuminant
-        )
+        return XYZColor(xyz_x, xyz_y, xyz_z, observer=cobj.observer, illuminant=cobj.illuminant)
 
     # Various variables used throughout the conversion.
     cie_k_times_e = color_constants.CIE_K * color_constants.CIE_E
@@ -348,9 +330,7 @@ def Luv_to_XYZ(cobj, *args, **kwargs):
     # Z-coordinate calculation.
     xyz_z = xyz_y * (12.0 - 3.0 * var_u - 20.0 * var_v) / (4.0 * var_v)
 
-    return XYZColor(
-        xyz_x, xyz_y, xyz_z, illuminant=cobj.illuminant, observer=cobj.observer
-    )
+    return XYZColor(xyz_x, xyz_y, xyz_z, illuminant=cobj.illuminant, observer=cobj.observer)
 
 
 # noinspection PyPep8Naming,PyUnusedLocal
@@ -362,9 +342,7 @@ def LCHab_to_Lab(cobj, *args, **kwargs):
     lab_l = cobj.lch_l
     lab_a = math.cos(math.radians(cobj.lch_h)) * cobj.lch_c
     lab_b = math.sin(math.radians(cobj.lch_h)) * cobj.lch_c
-    return LabColor(
-        lab_l, lab_a, lab_b, illuminant=cobj.illuminant, observer=cobj.observer
-    )
+    return LabColor(lab_l, lab_a, lab_b, illuminant=cobj.illuminant, observer=cobj.observer)
 
 
 # noinspection PyPep8Naming,PyUnusedLocal
@@ -376,9 +354,7 @@ def LCHuv_to_Luv(cobj, *args, **kwargs):
     luv_l = cobj.lch_l
     luv_u = math.cos(math.radians(cobj.lch_h)) * cobj.lch_c
     luv_v = math.sin(math.radians(cobj.lch_h)) * cobj.lch_c
-    return LuvColor(
-        luv_l, luv_u, luv_v, illuminant=cobj.illuminant, observer=cobj.observer
-    )
+    return LuvColor(luv_l, luv_u, luv_v, illuminant=cobj.illuminant, observer=cobj.observer)
 
 
 # noinspection PyPep8Naming,PyUnusedLocal
@@ -397,9 +373,7 @@ def xyY_to_XYZ(cobj, *args, **kwargs):
         xyz_y = cobj.xyy_Y
         xyz_z = ((1.0 - cobj.xyy_x - cobj.xyy_y) * xyz_y) / cobj.xyy_y
 
-    return XYZColor(
-        xyz_x, xyz_y, xyz_z, illuminant=cobj.illuminant, observer=cobj.observer
-    )
+    return XYZColor(xyz_x, xyz_y, xyz_z, illuminant=cobj.illuminant, observer=cobj.observer)
 
 
 # noinspection PyPep8Naming,PyUnusedLocal
@@ -418,9 +392,7 @@ def XYZ_to_xyY(cobj, *args, **kwargs):
         xyy_y = cobj.xyz_y / xyz_sum
     xyy_Y = cobj.xyz_y
 
-    return xyYColor(
-        xyy_x, xyy_y, xyy_Y, observer=cobj.observer, illuminant=cobj.illuminant
-    )
+    return xyYColor(xyy_x, xyy_y, xyy_Y, observer=cobj.observer, illuminant=cobj.illuminant)
 
 
 # noinspection PyPep8Naming,PyUnusedLocal
@@ -455,9 +427,7 @@ def XYZ_to_Luv(cobj, *args, **kwargs):
     luv_u = 13.0 * luv_l * (luv_u - ref_U)
     luv_v = 13.0 * luv_l * (luv_v - ref_V)
 
-    return LuvColor(
-        luv_l, luv_u, luv_v, observer=cobj.observer, illuminant=cobj.illuminant
-    )
+    return LuvColor(luv_l, luv_u, luv_v, observer=cobj.observer, illuminant=cobj.illuminant)
 
 
 # noinspection PyPep8Naming,PyUnusedLocal
@@ -489,9 +459,7 @@ def XYZ_to_Lab(cobj, *args, **kwargs):
     lab_l = (116.0 * temp_y) - 16.0
     lab_a = 500.0 * (temp_x - temp_y)
     lab_b = 200.0 * (temp_y - temp_z)
-    return LabColor(
-        lab_l, lab_a, lab_b, observer=cobj.observer, illuminant=cobj.illuminant
-    )
+    return LabColor(lab_l, lab_a, lab_b, observer=cobj.observer, illuminant=cobj.illuminant)
 
 
 # noinspection PyPep8Naming,PyUnusedLocal
@@ -525,9 +493,7 @@ def XYZ_to_RGB(cobj, target_rgb, *args, **kwargs):
         logger.debug("  \\*   New values: %.3f, %.3f, %.3f", temp_X, temp_Y, temp_Z)
 
     # Apply an RGB working space matrix to the XYZ values (matrix mul).
-    rgb_r, rgb_g, rgb_b = apply_RGB_matrix(
-        temp_X, temp_Y, temp_Z, rgb_type=target_rgb, convtype="xyz_to_rgb"
-    )
+    rgb_r, rgb_g, rgb_b = apply_RGB_matrix(temp_X, temp_Y, temp_Z, rgb_type=target_rgb, convtype="xyz_to_rgb")
 
     # v
     linear_channels = dict(r=rgb_r, g=rgb_g, b=rgb_b)
@@ -557,9 +523,7 @@ def XYZ_to_RGB(cobj, target_rgb, *args, **kwargs):
             v = linear_channels[channel]
             nonlinear_channels[channel] = math.pow(v, 1 / target_rgb.rgb_gamma)
 
-    return target_rgb(
-        nonlinear_channels["r"], nonlinear_channels["g"], nonlinear_channels["b"]
-    )
+    return target_rgb(nonlinear_channels["r"], nonlinear_channels["g"], nonlinear_channels["b"])
 
 
 # noinspection PyPep8Naming,PyUnusedLocal
@@ -582,12 +546,12 @@ def RGB_to_XYZ(cobj, target_illuminant=None, *args, **kwargs):
                 linear_channels[channel] = math.pow((V + 0.055) / 1.055, 2.4)
     elif isinstance(cobj, BT2020Color):
         if kwargs.get("is_12_bits_system"):
-            a, b, c = 1.0993, 0.0181, 0.081697877417347  # noqa
+            a, b, c = 1.0993, 0.0181, 0.081697877417347
         else:
             a, b, c = 1.099, 0.018, 0.08124794403514049  # noqa
         for channel in ["r", "g", "b"]:
             V = getattr(cobj, "rgb_" + channel)
-            if V <= c:
+            if c >= V:
                 linear_channels[channel] = V / 4.5
             else:
                 linear_channels[channel] = math.pow((V + (a - 1)) / a, 1 / 0.45)
@@ -920,15 +884,11 @@ def IPT_to_XYZ(cobj, *args, **kwargs):
     Converts IPT to XYZ.
     """
     ipt_values = numpy.array(cobj.get_value_tuple())
-    lms_values = numpy.dot(
-        numpy.linalg.inv(IPTColor.conversion_matrices["lms_to_ipt"]), ipt_values
-    )
+    lms_values = numpy.dot(numpy.linalg.inv(IPTColor.conversion_matrices["lms_to_ipt"]), ipt_values)
 
     lms_prime = numpy.sign(lms_values) * numpy.abs(lms_values) ** (1 / 0.43)
 
-    xyz_values = numpy.dot(
-        numpy.linalg.inv(IPTColor.conversion_matrices["xyz_to_lms"]), lms_prime
-    )
+    xyz_values = numpy.dot(numpy.linalg.inv(IPTColor.conversion_matrices["xyz_to_lms"]), lms_prime)
     return XYZColor(*xyz_values, observer="2", illuminant="d65")
 
 
@@ -949,14 +909,7 @@ _RGB_CONVERSION_DICT_TEMPLATE = {
 }
 
 
-def convert_color(
-    color,
-    target_cs,
-    through_rgb_type=sRGBColor,
-    target_illuminant=None,
-    *args,
-    **kwargs
-):
+def convert_color(color, target_cs, through_rgb_type=sRGBColor, target_illuminant=None, *args, **kwargs):
     """
     Converts the color to the designated color space.
 
@@ -1021,21 +974,13 @@ def convert_color(
     for func in conversions:
         # Execute the function in this conversion step and store the resulting
         # Color object.
-        logger.debug(
-            " * Conversion: %s passed to %s()", new_color.__class__.__name__, func
-        )
+        logger.debug(" * Conversion: %s passed to %s()", new_color.__class__.__name__, func)
         logger.debug(" |->  in %s", new_color)
 
         if func:
             # This can be None if you try to convert a color to the color
             # space that is already in. IE: XYZ->XYZ.
-            new_color = func(
-                new_color,
-                target_rgb=target_rgb,
-                target_illuminant=target_illuminant,
-                *args,
-                **kwargs
-            )
+            new_color = func(new_color, target_rgb=target_rgb, target_illuminant=target_illuminant, *args, **kwargs)
 
         logger.debug(" |-< out %s", new_color)
 

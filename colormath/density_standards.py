@@ -2,6 +2,10 @@
 Various density standards.
 """
 
+from typing import Any, TypeAlias
+
+import numpy
+import numpy.typing
 from numpy import array
 
 # Visual density is typically used on grey patches. Take a reading and get
@@ -11,6 +15,8 @@ from numpy import array
 # weighting curve. The X-Rite 500 uses a thresh of 0.05, the X-Rite i1 appears
 # to use 0.08.
 VISUAL_DENSITY_THRESH = 0.08
+
+DENSITY_TYPE: TypeAlias = numpy.typing.NDArray[Any]
 
 ANSI_STATUS_A_RED = array(
     (

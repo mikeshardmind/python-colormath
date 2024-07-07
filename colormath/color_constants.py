@@ -2,21 +2,35 @@
 Contains lookup tables, constants, and things that are generally static
 and useful throughout the library.
 """
+
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Literal
+from typing import Any, Literal, TypeAlias, TypedDict
 
 import numpy
 import numpy.typing
 
-# Used in Lab and Luv calculations, see sections 6.3, 6.4 of
-# https://www.color.org/icc1v42.pdf
+# Used in Lab and Luv calculations, see https://www.color.org/icc1v42.pdf
 CIE_E = 216.0 / 24389.0
 CIE_K = 24389.0 / 27.0
 
+
+OBSERVERS_TYPE = Literal["2", "10"]
+ILLUMINANTS_2_DEGREE: TypeAlias = Literal["a", "b", "c", "d50", "d55", "d65", "d75", "e", "f2", "f7", "f11"]
+ILLUMINANTS_10_DEGREE: TypeAlias = Literal["d50", "d55", "d65", "d75"]
+ILLUMINANTS_TYPE: TypeAlias = ILLUMINANTS_2_DEGREE | ILLUMINANTS_10_DEGREE
+ILLUMINANTS_MAP_TYPE = TypedDict(
+    "ILLUMINANTS_MAP_TYPE",
+    {
+        "2": Mapping[ILLUMINANTS_TYPE, tuple[float, float, float]],
+        "10": Mapping[ILLUMINANTS_TYPE, tuple[float, float, float]],
+    },
+)
+
+
 # Observer Function and Illuminant Data
-ILLUMINANTS: Mapping[Literal["2", "10"], Mapping[str, numpy.typing.ArrayLike]] = {
+ILLUMINANTS: ILLUMINANTS_MAP_TYPE = {
     # 2 Degree Functions
     "2": {
         "a": (1.09850, 1.00000, 0.35585),
@@ -41,15 +55,15 @@ ILLUMINANTS: Mapping[Literal["2", "10"], Mapping[str, numpy.typing.ArrayLike]] =
 }
 
 OBSERVERS = ILLUMINANTS.keys()
-OBSERVERS_TYPE = Literal["2", "10"]
+
 
 # Chromatic Adaptation Matrices
 # http://brucelindbloom.com/Eqn_ChromAdapt.html
 
 
-CHROMATIC_ADAPTIONS = Literal["xyz_scaling", "bradford", "von_kries"]
+CHROMATIC_ADAPTIONS: TypeAlias = Literal["xyz_scaling", "bradford", "von_kries"]
 
-ADAPTATION_MATRICES: Mapping[CHROMATIC_ADAPTIONS, numpy.typing.ArrayLike] = {
+ADAPTATION_MATRICES: Mapping[CHROMATIC_ADAPTIONS, numpy.typing.NDArray[Any]] = {
     "xyz_scaling": numpy.array(
         (
             (1.00000, 0.00000, 0.00000),
